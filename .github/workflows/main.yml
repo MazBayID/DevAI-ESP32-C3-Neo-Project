@@ -1,37 +1,26 @@
 name: Build Neo Pocket AI v0.2
 
-on:
+"on":
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  IDF_VERSION: v5.5.2
-  IDF_TARGET: esp32c3
-  ZIP_FILE: Neo-Pocket-AI-v0.2.zip
+  IDF_VERSION: "v5.5.2"
+  IDF_TARGET: "esp32c3"
+  ZIP_FILE: "Neo-Pocket-AI-v0.2.zip"
 
 jobs:
-
   build:
-    name: ESP32-C3 / ESP-IDF 5.5.2
+    name: ESP32-C3 ESP-IDF 5.5.2
     runs-on: ubuntu-22.04
 
     steps:
-
-      # =====================================================
-      # 1. Checkout repository
-      # =====================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # =====================================================
-      # 2. Check ZIP
-      # =====================================================
-
-      - name: Check ZIP file
+      - name: Check ZIP
         shell: bash
         run: |
           set -e
@@ -39,10 +28,9 @@ jobs:
           echo "Checking ZIP..."
 
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR:"
-            echo "$ZIP_FILE tidak ditemukan."
+            echo "ERROR: $ZIP_FILE tidak ditemukan."
             echo
-            echo "Isi repository:"
+            echo "Repository contents:"
             ls -lah
             exit 1
           fi
@@ -50,294 +38,124 @@ jobs:
           echo "ZIP ditemukan:"
           ls -lh "$ZIP_FILE"
 
-
-      # =====================================================
-      # 3. Extract ZIP
-      # =====================================================
-
-      - name: Extract Neo Pocket AI ZIP
+      - name: Extract ZIP
         shell: bash
         run: |
           set -e
 
-          echo "Extracting $ZIP_FILE ..."
-
           rm -rf extracted
-
           mkdir -p extracted
+
+          echo "Extracting $ZIP_FILE..."
 
           unzip -q "$ZIP_FILE" -d extracted
 
           echo
-          echo "===== HASIL EXTRACTION ====="
-
+          echo "Extracted files:"
           find extracted -maxdepth 5 -type f | sort
 
-
-      # =====================================================
-      # 4. Detect project directory
-      # =====================================================
-
-      - name: Detect ESP-IDF project
+      - name: Find ESP-IDF project
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(find extracted \
-            -mindepth 1 \
-            -maxdepth 2 \
+          PROJECT_DIR="$(find extracted \
             -type f \
-            -name "CMakeLists.txt" \
+            -name CMakeLists.txt \
             -printf '%h\n' \
-            | head -n 1)
+            | head -n 1)"
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: ESP-IDF CMakeLists.txt tidak ditemukan."
-            echo
-            echo "Isi extracted:"
-            find extracted -maxdepth 5 -type f | sort
+            echo "ERROR: CMakeLists.txt tidak ditemukan."
             exit 1
           fi
 
-          echo "ESP-IDF project ditemukan:"
+          echo "Project ditemukan:"
           echo "$PROJECT_DIR"
 
           echo "$PROJECT_DIR" > project_dir.txt
 
-
-      # =====================================================
-      # 5. Install ESP-IDF 5.5.2
-      # =====================================================
-
-      - name: Install ESP-IDF 5.5.2
+      - name: Install ESP-IDF
         uses: espressif/install-esp-idf-action@v1
         with:
           version: ${{ env.IDF_VERSION }}
           target: ${{ env.IDF_TARGET }}
 
-
-      # =====================================================
-      # 6. Verify ESP-IDF + tools
-      # =====================================================
-
-      - name: Verify ESP-IDF environment
+      - name: Check ESP-IDF
         shell: bash
         run: |
           set -e
-
-          echo "========================================"
-          echo "ESP-IDF"
-          echo "========================================"
 
           echo "IDF_PATH=$IDF_PATH"
 
           idf.py --version
-
-          echo
-          echo "========================================"
-          echo "Python"
-          echo "========================================"
-
           python --version
-
-          echo
-          echo "========================================"
-          echo "CMake"
-          echo "========================================"
-
           cmake --version
-
-          echo
-          echo "========================================"
-          echo "Ninja"
-          echo "========================================"
-
           ninja --version
-
-          echo
-          echo "========================================"
-          echo "esptool"
-          echo "========================================"
-
           esptool version
 
-
-      # =====================================================
-      # 7. Show extracted project
-      # =====================================================
-
-      - name: Inspect extracted project
+      - name: Build ESP32-C3
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(cat project_dir.txt)
-
-          echo "========================================"
-          echo "PROJECT DIRECTORY"
-          echo "========================================"
-
-          echo "$PROJECT_DIR"
-
-          echo
-          echo "========================================"
-          echo "PROJECT FILES"
-          echo "========================================"
-
-          find "$PROJECT_DIR" \
-            -maxdepth 5 \
-            -type f \
-            | sort
-
-
-      # =====================================================
-      # 8. Set ESP32-C3 target
-      # =====================================================
-
-      - name: Set ESP32-C3 target
-        shell: bash
-        run: |
-          set -e
-
-          PROJECT_DIR=$(cat project_dir.txt)
+          PROJECT_DIR="$(cat project_dir.txt)"
 
           cd "$PROJECT_DIR"
+
+          echo "Setting target..."
 
           idf.py set-target esp32c3
 
-
-      # =====================================================
-      # 9. Build firmware
-      # =====================================================
-
-      - name: Build firmware
-        shell: bash
-        run: |
-          set -e
-
-          PROJECT_DIR=$(cat project_dir.txt)
-
-          cd "$PROJECT_DIR"
-
-          echo "========================================"
-          echo "BUILDING NEO POCKET AI"
-          echo "========================================"
+          echo "Building..."
 
           idf.py build
 
-
-      # =====================================================
-      # 10. Inspect build output
-      # =====================================================
-
-      - name: Inspect build output
+      - name: Show build files
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(cat project_dir.txt)
+          PROJECT_DIR="$(cat project_dir.txt)"
 
           cd "$PROJECT_DIR"
 
-          echo "========================================"
-          echo "BUILD OUTPUT"
-          echo "========================================"
+          echo "===== BUILD FILES ====="
 
-          find build \
-            -maxdepth 4 \
-            -type f \
-            | sort
+          find build -maxdepth 4 -type f | sort
 
           echo
-          echo "========================================"
-          echo "APPLICATION BIN"
-          echo "========================================"
+          echo "===== BIN FILES ====="
 
-          ls -lh build/*.bin
+          find build -name "*.bin" -type f -exec ls -lh {} \;
 
-          echo
-          echo "========================================"
-          echo "BOOTLOADER"
-          echo "========================================"
-
-          ls -lh build/bootloader/*.bin
-
-          echo
-          echo "========================================"
-          echo "PARTITION TABLE"
-          echo "========================================"
-
-          ls -lh build/partition_table/*.bin
-
-
-      # =====================================================
-      # 11. Merge BIN
-      #
-      # Output starts at flash address 0x0
-      # =====================================================
-
-      - name: Merge firmware into single BIN
+      - name: Merge firmware
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(cat project_dir.txt)
+          PROJECT_DIR="$(cat project_dir.txt)"
 
           cd "$PROJECT_DIR"
 
           mkdir -p release
 
-          echo "========================================"
-          echo "MERGING FIRMWARE"
-          echo "========================================"
+          echo "Merging firmware..."
 
           idf.py merge-bin \
             -o release/neo_pocket_ai-merged.bin
 
           echo
-          echo "Merged firmware:"
+          echo "Merged BIN:"
+
           ls -lh release/neo_pocket_ai-merged.bin
 
-
-      # =====================================================
-      # 12. Verify merged BIN
-      # =====================================================
-
-      - name: Verify merged BIN
+      - name: Create flash information
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(cat project_dir.txt)
-
-          cd "$PROJECT_DIR"
-
-          if [ ! -f "release/neo_pocket_ai-merged.bin" ]; then
-            echo "ERROR: merged BIN tidak dibuat."
-            exit 1
-          fi
-
-          echo "========================================"
-          echo "MERGED BIN OK"
-          echo "========================================"
-
-          ls -lh release/neo_pocket_ai-merged.bin
-
-          echo
-          echo "Ukuran:"
-          stat -c "%s bytes" release/neo_pocket_ai-merged.bin
-
-
-      # =====================================================
-      # 13. Generate flash information
-      # =====================================================
-
-      - name: Create FLASH_INFO.txt
-        shell: bash
-        run: |
-          set -e
-
-          PROJECT_DIR=$(cat project_dir.txt)
+          PROJECT_DIR="$(cat project_dir.txt)"
 
           cd "$PROJECT_DIR"
 
@@ -353,7 +171,7 @@ ESP-IDF:
 Merged firmware:
 neo_pocket_ai-merged.bin
 
-Merged image flash address:
+Flash address:
 0x00000000
 
 Hardware mapping:
@@ -367,7 +185,7 @@ SCK = GPIO2
 WS  = GPIO1
 SD  = GPIO8
 
-MAX98357
+MAX98357A
 DIN  = GPIO3
 BCLK = GPIO2
 LRC  = GPIO1
@@ -378,43 +196,7 @@ EOF
 
           cat release/FLASH_INFO.txt
 
-
-      # =====================================================
-      # 14. Copy important build files
-      # =====================================================
-
-      - name: Prepare release files
-        shell: bash
-        run: |
-          set -e
-
-          PROJECT_DIR=$(cat project_dir.txt)
-
-          cd "$PROJECT_DIR"
-
-          mkdir -p release/build-files
-
-          cp build/*.bin \
-            release/build-files/ || true
-
-          cp build/bootloader/*.bin \
-            release/build-files/ || true
-
-          cp build/partition_table/*.bin \
-            release/build-files/ || true
-
-          cp build/flasher_args.json \
-            release/build-files/ || true
-
-          echo "Release files:"
-          find release -type f -maxdepth 3 | sort
-
-
-      # =====================================================
-      # 15. Upload final artifact
-      # =====================================================
-
-      - name: Upload firmware artifact
+      - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
           name: Neo-Pocket-AI-v0.2-ESP32-C3
@@ -422,4 +204,3 @@ EOF
           path: |
             extracted/**/release/neo_pocket_ai-merged.bin
             extracted/**/release/FLASH_INFO.txt
-            extracted/**/release/build-files/*

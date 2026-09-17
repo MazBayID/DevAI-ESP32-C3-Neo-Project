@@ -1,206 +1,391 @@
 name: Build Neo Pocket AI v0.2
 
-"on":
+on:
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-env:
-  IDF_VERSION: "v5.5.2"
-  IDF_TARGET: "esp32c3"
-  ZIP_FILE: "Neo-Pocket-AI-v0.2.zip"
+  push:
+    branches:
+      - main
 
 jobs:
   build:
-    name: ESP32-C3 ESP-IDF 5.5.2
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
+
+      # ============================================================
+      # 1. CHECKOUT
+      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check ZIP
+
+      # ============================================================
+      # 2. INSTALL ESP-IDF
+      # ============================================================
+      - name: Install ESP-IDF 5.5.2
+        uses: espressif/install-esp-idf-action@v1
+        with:
+          version: v5.5.2
+
+
+      # ============================================================
+      # 3. INSTALL ESP-IDF TOOLS
+      # ============================================================
+      - name: Install ESP-IDF tools
         shell: bash
         run: |
           set -e
 
-          echo "Checking ZIP..."
+          echo "=========================================="
+          echo "ESP-IDF TOOL INSTALLATION"
+          echo "=========================================="
+
+          echo "IDF_PATH=$IDF_PATH"
+
+          python "$IDF_PATH/tools/idf_tools.py" install
+
+          echo
+          echo "=== ESP-IDF VERSION ==="
+
+          . "$IDF_PATH/export.sh"
+
+          idf.py --version
+
+
+      # ============================================================
+      # 4. CHECK ZIP
+      # ============================================================
+      - name: Check Neo Pocket AI ZIP
+        shell: bash
+        run: |
+          set -e
+
+          ZIP_FILE="./Neo-Pocket-AI-v0.2.zip"
+
+          echo "=========================================="
+          echo "CHECKING NEO POCKET AI ZIP"
+          echo "=========================================="
 
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: $ZIP_FILE tidak ditemukan."
+            echo
+            echo "ERROR:"
+            echo "$ZIP_FILE was not found."
             echo
             echo "Repository contents:"
             ls -lah
             exit 1
           fi
 
-          echo "ZIP ditemukan:"
-          ls -lh "$ZIP_FILE"
-
-      - name: Extract ZIP
-        shell: bash
-        run: |
-          set -e
-
-          rm -rf extracted
-          mkdir -p extracted
-
-          echo "Extracting $ZIP_FILE..."
-
-          unzip -q "$ZIP_FILE" -d extracted
+          echo
+          echo "Using:"
+          echo "$ZIP_FILE"
 
           echo
-          echo "Extracted files:"
-          find extracted -maxdepth 5 -type f | sort
+          echo "=== ZIP INTEGRITY TEST ==="
 
-      - name: Find ESP-IDF project
+          unzip -t "$ZIP_FILE"
+
+
+      # ============================================================
+      # 5. EXTRACT ZIP
+      # ============================================================
+      - name: Extract Neo Pocket AI source
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR="$(find extracted \
-            -type f \
-            -name CMakeLists.txt \
-            -printf '%h\n' \
-            | head -n 1)"
+          echo "=========================================="
+          echo "EXTRACTING NEO POCKET AI SOURCE"
+          echo "=========================================="
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: CMakeLists.txt tidak ditemukan."
+          rm -rf neo-source
+          mkdir -p neo-source
+
+          unzip -q \
+            "./Neo-Pocket-AI-v0.2.zip" \
+            -d neo-source
+
+          echo
+          echo "=== EXTRACTED FILES ==="
+
+          find neo-source \
+            -maxdepth 5 \
+            -type f \
+            | sort
+
+
+      # ============================================================
+      # 6. LOCATE ESP-IDF PROJECT
+      # ============================================================
+      - name: Locate ESP-IDF project
+        shell: bash
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "LOCATING ESP-IDF PROJECT"
+          echo "=========================================="
+
+          CMAKE_FILE=$(find \
+            neo-source \
+            -name CMakeLists.txt \
+            -type f \
+            | head -n 1)
+
+          if [ -z "$CMAKE_FILE" ]; then
+            echo
+            echo "ERROR:"
+            echo "CMakeLists.txt was not found."
             exit 1
           fi
 
-          echo "Project ditemukan:"
-          echo "$PROJECT_DIR"
+          SOURCE_DIR=$(dirname "$CMAKE_FILE")
 
-          echo "$PROJECT_DIR" > project_dir.txt
+          echo
+          echo "Project directory:"
+          echo "$SOURCE_DIR"
 
-      - name: Install ESP-IDF
-        uses: espressif/install-esp-idf-action@v1
-        with:
-          version: ${{ env.IDF_VERSION }}
-          target: ${{ env.IDF_TARGET }}
+          echo "$SOURCE_DIR" > project_dir.txt
 
-      - name: Check ESP-IDF
+
+      # ============================================================
+      # 7. INSPECT PROJECT
+      # ============================================================
+      - name: Inspect Neo project
         shell: bash
         run: |
           set -e
 
-          echo "IDF_PATH=$IDF_PATH"
+          SOURCE_DIR=$(cat project_dir.txt)
 
+          echo "=========================================="
+          echo "NEO PROJECT FILES"
+          echo "=========================================="
+
+          find "$SOURCE_DIR" \
+            -maxdepth 5 \
+            -type f \
+            | sort
+
+
+      # ============================================================
+      # 8. BUILD
+      # ============================================================
+      - name: Build ESP32-C3 firmware
+        shell: bash
+        run: |
+          set -e
+
+          SOURCE_DIR=$(cat project_dir.txt)
+
+          echo "=========================================="
+          echo "ACTIVATING ESP-IDF"
+          echo "=========================================="
+
+          . "$IDF_PATH/export.sh"
+
+          echo
+          echo "ESP-IDF version:"
           idf.py --version
-          python --version
-          cmake --version
-          ninja --version
-          esptool version
 
-      - name: Build ESP32-C3
-        shell: bash
-        run: |
-          set -e
+          echo
+          echo "=========================================="
+          echo "SETTING TARGET: ESP32-C3"
+          echo "=========================================="
 
-          PROJECT_DIR="$(cat project_dir.txt)"
-
-          cd "$PROJECT_DIR"
-
-          echo "Setting target..."
+          cd "$SOURCE_DIR"
 
           idf.py set-target esp32c3
 
-          echo "Building..."
+          echo
+          echo "=========================================="
+          echo "BUILDING NEO POCKET AI"
+          echo "=========================================="
 
           idf.py build
 
-      - name: Show build files
+
+      # ============================================================
+      # 9. INSPECT BUILD
+      # ============================================================
+      - name: Inspect build output
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR="$(cat project_dir.txt)"
+          SOURCE_DIR=$(cat project_dir.txt)
 
-          cd "$PROJECT_DIR"
+          cd "$SOURCE_DIR"
 
-          echo "===== BUILD FILES ====="
+          echo "=========================================="
+          echo "BUILD OUTPUT"
+          echo "=========================================="
 
-          find build -maxdepth 4 -type f | sort
+          find build \
+            -maxdepth 3 \
+            -type f \
+            | sort
 
           echo
-          echo "===== BIN FILES ====="
+          echo "=== BIN FILES ==="
 
-          find build -name "*.bin" -type f -exec ls -lh {} \;
+          find build \
+            -maxdepth 3 \
+            -type f \
+            -name "*.bin" \
+            -exec ls -lh {} \;
 
-      - name: Merge firmware
+
+      # ============================================================
+      # 10. CREATE MERGED BIN
+      # ============================================================
+      - name: Create merged firmware
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR="$(cat project_dir.txt)"
+          SOURCE_DIR=$(cat project_dir.txt)
 
-          cd "$PROJECT_DIR"
+          cd "$SOURCE_DIR"
 
-          mkdir -p release
+          echo "=========================================="
+          echo "CREATING MERGED FIRMWARE"
+          echo "=========================================="
 
-          echo "Merging firmware..."
+          . "$IDF_PATH/export.sh"
 
-          idf.py merge-bin \
-            -o release/neo_pocket_ai-merged.bin
+          idf.py merge-bin
 
           echo
-          echo "Merged BIN:"
+          echo "=== MERGED BIN ==="
 
-          ls -lh release/neo_pocket_ai-merged.bin
+          find build \
+            -maxdepth 1 \
+            -type f \
+            -name "*-merged.bin" \
+            -exec ls -lh {} \;
 
-      - name: Create flash information
+
+      # ============================================================
+      # 11. COLLECT FIRMWARE
+      # ============================================================
+      - name: Collect firmware
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR="$(cat project_dir.txt)"
+          SOURCE_DIR=$(cat project_dir.txt)
 
-          cd "$PROJECT_DIR"
+          cd "$SOURCE_DIR"
 
-          cat > release/FLASH_INFO.txt <<'EOF'
-Neo Pocket AI v0.2
+          echo "=========================================="
+          echo "COLLECTING FIRMWARE"
+          echo "=========================================="
 
-Target:
-ESP32-C3
+          rm -rf artifacts
+          mkdir -p artifacts
 
-ESP-IDF:
-5.5.2
+          MERGED=$(find \
+            build \
+            -maxdepth 1 \
+            -type f \
+            -name "*-merged.bin" \
+            | head -n 1)
 
-Merged firmware:
-neo_pocket_ai-merged.bin
+          if [ -n "$MERGED" ]; then
 
-Flash address:
-0x00000000
+            echo
+            echo "Merged firmware:"
+            echo "$MERGED"
 
-Hardware mapping:
+            cp "$MERGED" \
+              artifacts/neo_pocket_ai-v0.2-merged.bin
 
-OLED
-SDA = GPIO21
-SCL = GPIO20
+          else
 
-INMP441
-SCK = GPIO2
-WS  = GPIO1
-SD  = GPIO8
+            echo
+            echo "WARNING:"
+            echo "Merged BIN was not found."
 
-MAX98357A
-DIN  = GPIO3
-BCLK = GPIO2
-LRC  = GPIO1
+          fi
 
-Switch:
-Not used
-EOF
+          echo
+          echo "Copying individual BIN files..."
 
-          cat release/FLASH_INFO.txt
+          find build \
+            -maxdepth 3 \
+            -type f \
+            -name "*.bin" \
+            -exec cp {} artifacts/ \;
 
+          echo
+          echo "=== ARTIFACTS ==="
+
+          ls -lah artifacts
+
+          if ! find artifacts \
+            -type f \
+            -name "*.bin" \
+            | grep -q .; then
+
+            echo
+            echo "ERROR:"
+            echo "No firmware BIN files were produced."
+
+            exit 1
+          fi
+
+
+      # ============================================================
+      # 12. CREATE FLASH INFO
+      # ============================================================
+      - name: Create FLASH_INFO.txt
+        shell: bash
+        run: |
+          set -e
+
+          SOURCE_DIR=$(cat project_dir.txt)
+
+          cd "$SOURCE_DIR"
+
+          printf '%s\n' \
+            'Neo Pocket AI v0.2' \
+            '' \
+            'Target: ESP32-C3' \
+            'ESP-IDF: v5.5.2' \
+            '' \
+            'Merged firmware address: 0x00000000' \
+            '' \
+            'OLED:' \
+            'SDA = GPIO21' \
+            'SCL = GPIO20' \
+            '' \
+            'INMP441:' \
+            'SCK = GPIO2' \
+            'WS = GPIO1' \
+            'SD = GPIO8' \
+            '' \
+            'MAX98357A:' \
+            'DIN = GPIO3' \
+            'BCLK = GPIO2' \
+            'LRC = GPIO1' \
+            '' \
+            'Switch: Not used' \
+            > artifacts/FLASH_INFO.txt
+
+          echo
+          echo "=== FLASH INFO ==="
+
+          cat artifacts/FLASH_INFO.txt
+
+
+      # ============================================================
+      # 13. UPLOAD
+      # ============================================================
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
           name: Neo-Pocket-AI-v0.2-ESP32-C3
-          if-no-files-found: error
           path: |
-            extracted/**/release/neo_pocket_ai-merged.bin
-            extracted/**/release/FLASH_INFO.txt
+            neo-source/**/artifacts/
+          if-no-files-found: error
